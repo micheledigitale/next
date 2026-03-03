@@ -1,26 +1,15 @@
-/**
- * LLM Chat Application Template
- *
- * A simple chat application using Cloudflare Workers AI.
- * This template demonstrates how to implement an LLM-powered chat interface with
- * streaming responses using Server-Sent Events (SSE).
- *
- * @license MIT
- */
 import { Env, ChatMessage } from "./types";
 
-// Model ID for Workers AI model
-// https://developers.cloudflare.com/workers-ai/models/
-const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
+// Modello Gemma 2 9B: perfetto per risposte secche e veloci
+const MODEL_ID = "@cf/google/gemma-2-9b-it";
 
-// Default system prompt
+// Istruzioni per eliminare i fronzoli tipici delle AI
 const SYSTEM_PROMPT =
-	"You are a helpful, friendly assistant. Provide concise and accurate responses.";
+	"Sei Jarvis. Rispondi solo in italiano. Sii brutale, sintetico e vai dritto al punto. " +
+	"Niente saluti, niente introduzioni, niente 'Certamente!' o 'Ecco la risposta'. " +
+	"Fornisci solo l'informazione richiesta. Zero chiacchiere.";
 
 export default {
-	/**
-	 * Main request handler for the Worker
-	 */
 	async fetch(
 		request: Request,
 		env: Env,
@@ -28,41 +17,27 @@ export default {
 	): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Handle static assets (frontend)
 		if (url.pathname === "/" || !url.pathname.startsWith("/api/")) {
 			return env.ASSETS.fetch(request);
 		}
 
-		// API Routes
-		if (url.pathname === "/api/chat") {
-			// Handle POST requests for chat
-			if (request.method === "POST") {
-				return handleChatRequest(request, env);
-			}
-
-			// Method not allowed for other request types
-			return new Response("Method not allowed", { status: 405 });
+		if (url.pathname === "/api/chat" && request.method === "POST") {
+			return handleChatRequest(request, env);
 		}
 
-		// Handle 404 for unmatched routes
 		return new Response("Not found", { status: 404 });
 	},
 } satisfies ExportedHandler<Env>;
 
-/**
- * Handles chat API requests
- */
 async function handleChatRequest(
 	request: Request,
 	env: Env,
 ): Promise<Response> {
 	try {
-		// Parse JSON request body
 		const { messages = [] } = (await request.json()) as {
 			messages: ChatMessage[];
 		};
 
-		// Add system prompt if not present
 		if (!messages.some((msg) => msg.role === "system")) {
 			messages.unshift({ role: "system", content: SYSTEM_PROMPT });
 		}
@@ -71,16 +46,16 @@ async function handleChatRequest(
 			MODEL_ID,
 			{
 				messages,
-				max_tokens: 1024,
+				max_tokens: 300, // Limite stretto per forzare la sintesi
+				temperature: 0.2, // Più basso = più deterministico e meno chiacchiere
 				stream: true,
 			},
 			{
-				// Uncomment to use AI Gateway
-				// gateway: {
-				//   id: "YOUR_GATEWAY_ID", // Replace with your AI Gateway ID
-				//   skipCache: false,      // Set to true to bypass cache
-				//   cacheTtl: 3600,        // Cache time-to-live in seconds
-				// },
+				gateway: {
+					id: "jarvis-gateway", 
+					skipCache: false,     
+					cacheTtl: 86400,      
+				},
 			},
 		);
 
@@ -92,13 +67,6 @@ async function handleChatRequest(
 			},
 		});
 	} catch (error) {
-		console.error("Error processing chat request:", error);
-		return new Response(
-			JSON.stringify({ error: "Failed to process request" }),
-			{
-				status: 500,
-				headers: { "content-type": "application/json" },
-			},
-		);
+		return new Response(JSON.stringify({ error: "Errore sistema." }), { status: 500 });
 	}
 }
